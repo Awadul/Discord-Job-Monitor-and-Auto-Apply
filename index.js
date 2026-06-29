@@ -40,6 +40,11 @@ Happy to share my resume, GitHub, or discuss how I can contribute. Thanks!
                             console.log(chalk.green(`Message sent to the thread ${thread.name}`));
                         } catch (error) {
                             console.error(chalk.red('There was error in sending message to the thread: ', error));
+                            console.error(chalk.magenta('Thread Name: ', threadName));
+                            console.error(chalk.magenta('Thread Body: ', body.content));
+                            console.error(chalk.magenta('Thread ID: ', thread.id));
+                            console.error(chalk.magenta('Thread Owner ID: ', thread.ownerId));
+                            console.error(chalk.magenta('Thread Member Count: ', thread.memberCount));
                         }
                     }, 2500);
 
@@ -49,7 +54,8 @@ Happy to share my resume, GitHub, or discuss how I can contribute. Thanks!
                     console.log(servers);
                     const reportingServer = await servers.get(config.reportingServerID);
                     const reportingChannel = await reportingServer.channels.fetch(config.reportingServerChannelID);
-                    reportingChannel.send(`New thread created: ${thread}\nCreated By: ${thread.ownerId} \nContent: ${body.content}`);
+                    const putContentToLimit = body.content.slice(0, 1800);
+                    reportingChannel.send(`New thread created: ${thread}\nCreated By: ${thread.ownerId} \nContent: ${putContentToLimit}`);
                     break;
                 }
             }
