@@ -1,7 +1,10 @@
 import { Client } from 'discord.js-selfbot-v13';
 import config from './config.json' with { type: 'json' };
+import chalk from 'chalk';
+
 
 const client = new Client();
+let servers;
 
 // on the event of new threads beings generated in the servers
 client.on('threadCreate', async (thread) => {
@@ -12,24 +15,49 @@ client.on('threadCreate', async (thread) => {
     // we confirm that we want to work in this server first.
     if (config.Servers.some(data => data.ServerID === thread.guild.id)) {
 
+        try {
+            // get the starte   r message
+            const threadName = thread.name;
+            const body = await thread.fetchStarterMessage();
+            console.log('\nThread Name: ', threadName, '\nBody: ', body);
 
-        // get the starter message
-        const threadName = thread.name;
-        const body = await thread.fetchStarterMessage();
-        console.log('\nThread Name: ', threadName, '\nBody: ', body);
+            // check if the thread body has matched the keywords
+            for (let keyword in config.Keywords) {
+                if (body.content.toLowerCase().includes(keyword.toLowerCase())) {
+                    console.log(`Keyword found: ${keyword}`);
 
+                    // send a message in the thread
+                    setTimeout(async () => {
+                        try {
+                            await thread.send(`Hi! I'm Awadul, a Full Stack Developer focused on React, Next.js, Node.js, PostgreSQL, and AI integrations with OpenAI APIs.
 
-        // check if the thread body has matched the keywords
-        for (let keyword in config.Keywords) {
-            if (body.content.toLowerCase().includes(keyword.toLowerCase())) {
-                console.log(`Keyword found: ${keyword}`);
+I've built production web applications, AI-powered tools, and automation projects, and I'm always excited to work on impactful products.
 
-                // send a message in the thread
-                setTimeout(async () => await thread.send(`I'm interested in this job. You can contact me at ${config.email} or message me on <@${config.discordId}>`), 2500);
-                break;
+You can check out some of my work here: [https://awadul.github.io]
+
+Happy to share my resume, GitHub, or discuss how I can contribute. Thanks!
+`);
+                            console.log(chalk.green(`Message sent to the thread ${thread.name}`));
+                        } catch (error) {
+                            console.error(chalk.red('There was error in sending message to the thread: ', error));
+                        }
+                    }, 2500);
+
+                    // send the message to the reporting server with the threadID and the owner
+
+                    // console.log the server
+                    console.log(servers);
+                    const reportingServer = await servers.get(config.reportingServerID);
+                    const reportingChannel = await reportingServer.channels.fetch(config.reportingServerChannelID);
+                    reportingChannel.send(`New thread created: ${thread}\nCreated By: ${thread.ownerId} \nContent: ${body.content}`);
+                    break;
+                }
             }
+        } catch (error) {
+            console.error(chalk.red('There was error in the script: ', error));
         }
-
+    } else {
+        return;
     }
     // // check if the server is in the config
     // if (config.Servers.some(data => data.ServerID === thread.guild.id && data.ChannelID === thread.channel.id)) {
@@ -60,7 +88,7 @@ client.on('ready', () => {
     console.log(`${client.user.tag} is ready!`);
 
     // check the servers for each and every server the user should be in that server
-    const servers = client.guilds.cache;
+    servers = client.guilds.cache;
 
     // make sure the cache servers and the config servers are matching with each others.
     servers.forEach(server => {
