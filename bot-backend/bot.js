@@ -1,8 +1,9 @@
 import { Client } from 'discord.js-selfbot-v13';
-import config from './config.json' with { type: 'json' };
+import config from '../config.json' with { type: 'json' };
 import chalk from 'chalk';
 import crypto from 'crypto';
 import { JSDOM } from 'jsdom';
+import db from './database/data.database.js';
 
 const client = new Client();
 let servers;
@@ -17,11 +18,10 @@ client.on('threadCreate', async (thread) => {
     if (config.Servers.some(data => data.ServerID === thread.guild.id)) {
 
         try {
-            // get the starte   r message
+            // get the starter message
             const threadName = thread.name;
             const body = await thread.fetchStarterMessage();
-            console.log('\nThread Name: ', threadName, '\nBody: ', body);
-
+            console.log('\nThread Name: ', threadName);
             // User Agent Generation
             // Syntax: User-Agent: Mozilla/5.0 (<system-information>) <platform> (<platform-details>) <extensions>
             // Example: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36
@@ -362,49 +362,61 @@ THREAD INFO:
             }
 
             // check if the thread body matches the keywords to avoid rate limiting
-            let matched = false;
-            for (let keyword of config.Keywords) {
-                if (body.content.toLowerCase().includes(keyword.toLowerCase())) {
-                    matched = true;
-                    console.log(chalk.yellow(`[Match] Keyword found: "${keyword}" in thread "${threadName}"`));
 
-                    // ask the ai about the response
-                    let analyze = "";
-                    try {
-                        analyze = await request_aiToAnalyze();
-                        console.log(chalk.cyan(`[AI Success] Generated Pitch for "${threadName}":\n${analyze}`));
-                    } catch (error) {
-                        console.error(chalk.red(`[AI Error] Failed to generate pitch for "${threadName}":`), error);
-                    }
+            // const saved_job = db.addJob(thread.authorId, thread.guildId, thread.channelId, thread.name, thread.url, false, false, "");
+            if (config.Keywords.some((keyword) => body.content.toLowerCase().includes(keyword))) {
 
-                    // send the dynamic AI pitch message in the thread
-                    if (analyze) {
-                        setTimeout(async () => {
-                            try {
-                                await thread.send(analyze);
-                                console.log(chalk.green(`[Discord Success] Sent AI pitch to thread: "${thread.name}"`));
-                            } catch (error) {
-                                console.error(chalk.red(`[Discord Error] Failed to send AI pitch to thread "${threadName}":`), error);
-                            }
-                        }, 2500);
-                    }
+                // console.log(chalk.yellow(`[Match] Keyword found: "${keyword}" in thread "${threadName}"`));
 
-                    // send the message to the reporting server with the threadID and the owner
-                    try {
-                        const reportingServer = await servers.get(config.reportingServerID);
-                        const reportingChannel = await reportingServer.channels.fetch(config.reportingServerChannelID);
-                        const putContentToLimit = body.content.slice(0, 1800);
-                        await reportingChannel.send(`New thread created: ${thread}\nCreated By: ${thread.ownerId} \nContent: ${putContentToLimit}`);
-                        console.log(chalk.green(`[Reporting Success] Sent thread creation notification for "${threadName}"`));
-                    } catch (error) {
-                        console.error(chalk.red(`[Reporting Error] Failed to send report for "${threadName}":`), error);
-                    }
+                // ask the ai about the response
+                let analyze = "";
+                try {
+                    analyze = await request_aiToAnalyze();
+                    console.log(chalk.cyan(`[AI Success] Generated Pitch for "${threadName}":\n${analyze}`));
 
-                    break;
+                    /// update the record instance with the AI generated pitch and set the accounted to true
+                    // db.updateJob(result.lastInsertRowid, 'accounted', 1);
+                    // db.updateJob(result.lastInsertRowid, 'reply_message', analyze);
+                } catch (error) {
+                    console.error(chalk.red(`[AI Error] Failed to generate pitch for "${threadName}":`), error);
                 }
-            }
-            if (!matched) {
+
+                // send the dynamic AI pitch message in the thread
+                if (analyze) {
+                    setTimeout(async () => {
+                        try {
+                            await thread.send(analyze);
+                            console.log(chalk.green(`[Discord Success] Sent AI pitch to thread: "${thread.name}"`));
+                        } catch (error) {
+                            console.error(chalk.red(`[Discord Error] Failed to send AI pitch to thread "${threadName}":`), error);
+                        }
+                    }, 2500);
+                }
+
+                // insert it into the db
+                const result = db.addJob(thread.authorId, thread.guildId, thread.channelId, thread.name, thread.url, true, true, analyze);
+                console.log(chalk.gray(`[Accounted] New thread "${threadName}" added to the database`));
+                console.log(chalk.magenta(`[DB Insert] Row Number: ${result.lastInsertRowid}`));
+
+                // send the message to the reporting server with the threadID and the owner
+                try {
+                    const reportingServer = await servers.get(config.reportingServerID);
+                    const reportingChannel = await reportingServer.channels.fetch(config.reportingServerChannelID);
+                    const putContentToLimit = body.content.slice(0, 1800);
+                    await reportingChannel.send(`New thread created: ${thread}\nCreated By: ${thread.ownerId} \nContent: ${putContentToLimit}`);
+                    console.log(chalk.green(`[Reporting Success] Sent thread creation notification for "${threadName}"`));
+
+                } catch (error) {
+                    console.error(chalk.red(`[Reporting Error] Failed to send report for "${threadName}":`), error);
+                    // insert it into the db
+                    // db.addJob(thread.authorId, thread.guildId, thread.channelId, thread.name, thread.url, true, false, "");
+                }
+
+            } else {
+                const result = db.addJob(thread.authorId, thread.guildId, thread.channelId, thread.name, thread.url, false, false, "");
                 console.log(chalk.gray(`[Skip] No keywords matched for thread: "${threadName}"`));
+                console.log(chalk.magenta(`[DB Insert] Row Number: ${result.lastInsertRowid}`));
+
                 // send to the not-accounted-for channel
                 try {
                     const reportingServer = await servers.get(config.reportingServerID);
@@ -412,6 +424,7 @@ THREAD INFO:
                     const putContentToLimit = body.content.slice(0, 1800);
                     await notAccountedPostsChannel.send(`New thread created: ${thread}\nCreated By: ${thread.ownerId} \nContent: ${putContentToLimit}`);
                     console.log(chalk.green(`[Filtered Out Post]: No message was sent to thread: "${threadName}"`));
+
                 } catch (error) {
                     console.error(chalk.red(`[Filtered Out Post] Failed to send report for "${threadName}":`), error);
                 }
@@ -422,27 +435,6 @@ THREAD INFO:
     } else {
         return;
     }
-    // // check if the server is in the config
-    // if (config.Servers.some(data => data.ServerID === thread.guild.id && data.ChannelID === thread.channel.id)) {
-    //     // check if the keywords are in the thread name
-    //     if (config.Servers.some(data => data.Keywords.some(keyword => thread.name.toLowerCase().includes(keyword.toLowerCase())))) {
-    //         console.log(`New thread created: ${thread.name}`);
-    //         // here you can perform other actions like sending a message to the thread
-    //         // you can also get the channel of the thread using thread.channel
-    //         // and the guild of the thread using thread.guild
-    //         // and the parent of the thread using thread.parent
-    //         // and the thread name using thread.name
-    //         // and the thread id using thread.id
-    //         // and the thread type using thread.type
-    //         // and the thread owner using thread.owner
-    //         // and the thread owner id using thread.ownerId
-    //         // and the thread member count using thread.memberCount
-    //         // and the thread member count using thread.memberCount
-    //         // and the thread member count using thread.memberCount
-    //         // and the thread member count using thread.memberCount
-    //     }
-    // }
-
 });
 
 

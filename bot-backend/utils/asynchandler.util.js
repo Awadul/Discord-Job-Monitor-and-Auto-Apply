@@ -1,0 +1,13 @@
+// async handler functions to reduce try catch blocks
+
+const asyncHandler = (func) => {
+    return async (req, res, next) => {
+        try {
+            await func(req, res, next);
+        } catch (error) {
+            next(error);
+        }
+    }
+}
+
+export { asyncHandler };
